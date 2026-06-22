@@ -39,6 +39,12 @@ jobs:
           - target: aarch64-apple-darwin
             runner: macos-15
             npm_package: codex-darwin-arm64
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2022
+            npm_package: codex-win32-x64
+          - target: aarch64-pc-windows-msvc
+            runner: windows-2022
+            npm_package: codex-win32-arm64
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -85,7 +91,14 @@ jobs:
           echo "${target_no_jitter}=1" >> "$GITHUB_ENV"
 
       - name: Configure rusty_v8 artifact overrides and verify checksums
+        if: ${{ runner.os != 'Windows' }}
         uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Configure MSVC environment (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        uses: ./.github/actions/setup-msvc-env
         with:
           target: ${{ matrix.target }}
 
@@ -103,9 +116,26 @@ jobs:
 
       - name: Build AICodex
         shell: bash
-        run: cargo build --target "${{ matrix.target }}" --release --timings --bin aicodex
+        run: |
+          set -euo pipefail
+          target="${{ matrix.target }}"
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            if [[ "$target" == "x86_64-pc-windows-msvc" ]]; then
+              export LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC
+            fi
+            cargo build \
+              --target "$target" \
+              --release \
+              --timings \
+              --bin aicodex \
+              --bin codex-command-runner \
+              --bin codex-windows-sandbox-setup
+          else
+            cargo build --target "$target" --release --timings --bin aicodex
+          fi
 
       - name: Strip binaries
+        if: ${{ runner.os != 'Windows' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -209,6 +239,8 @@ jobs:
             codex-linux-arm64
             codex-darwin-x64
             codex-darwin-arm64
+            codex-win32-x64
+            codex-win32-arm64
           )
           mkdir -p dist/npm
           for package in "${packages[@]}"; do
@@ -232,19 +264,6 @@ jobs:
             --package codex \
             --release-version "$VERSION" \
             --staging-dir "$root_stage"
-          node <<'NODE'
-          const fs = require('fs');
-          const path = require('path');
-          const root = process.env.ROOT_STAGE;
-          const packageJsonPath = path.join(root, 'package.json');
-          const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-          for (const name of Object.keys(packageJson.optionalDependencies || {})) {
-            if (name.includes('win32')) {
-              delete packageJson.optionalDependencies[name];
-            }
-          }
-          fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
-          NODE
           npm pack "$root_stage" --pack-destination dist/npm
           mv "dist/npm/yuebanlaosiji-aicodex-${VERSION}.tgz" "dist/npm/codex-npm-${VERSION}.tgz"
 
@@ -316,6 +335,8 @@ jobs:
             "dist/npm/codex-linux-arm64-${VERSION}.tgz"
             "dist/npm/codex-darwin-x64-${VERSION}.tgz"
             "dist/npm/codex-darwin-arm64-${VERSION}.tgz"
+            "dist/npm/codex-win32-x64-${VERSION}.tgz"
+            "dist/npm/codex-win32-arm64-${VERSION}.tgz"
           )
           root_tarball="dist/npm/codex-npm-${VERSION}.tgz"
 

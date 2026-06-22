@@ -144,14 +144,9 @@ else
   python_bin="python"
 fi
 
-if ! command -v zstd >/dev/null 2>&1 && [[ -x "${repo_root}/.github/workflows/zstd" ]]; then
-  export PATH="${repo_root}/.github/workflows:${PATH}"
-fi
-
 mkdir -p "$archive_dir"
 package_dir="${RUNNER_TEMP:-/tmp}/${archive_stem}-${target}"
 gzip_archive_path="${archive_dir}/${archive_stem}-${target}.tar.gz"
-zstd_archive_path="${archive_dir}/${archive_stem}-${target}.tar.zst"
 rm -rf "$package_dir"
 
 python_args=(
@@ -162,7 +157,6 @@ python_args=(
   --cargo-profile release
   --package-dir "$package_dir"
   --archive-output "$gzip_archive_path"
-  --archive-output "$zstd_archive_path"
 )
 if ((${#resource_args[@]} > 0)); then
   python_args+=("${resource_args[@]}")
