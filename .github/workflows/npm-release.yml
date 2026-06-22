@@ -33,9 +33,6 @@ jobs:
           - target: aarch64-unknown-linux-musl
             runner: ubuntu-24.04-arm
             npm_package: codex-linux-arm64
-          - target: x86_64-apple-darwin
-            runner: macos-13
-            npm_package: codex-darwin-x64
           - target: aarch64-apple-darwin
             runner: macos-15
             npm_package: codex-darwin-arm64
@@ -237,7 +234,6 @@ jobs:
           packages=(
             codex-linux-x64
             codex-linux-arm64
-            codex-darwin-x64
             codex-darwin-arm64
             codex-win32-x64
             codex-win32-arm64
@@ -264,6 +260,15 @@ jobs:
             --package codex \
             --release-version "$VERSION" \
             --staging-dir "$root_stage"
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const root = process.env.ROOT_STAGE;
+          const packageJsonPath = path.join(root, 'package.json');
+          const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+          delete packageJson.optionalDependencies?.['@yuebanlaosiji/aicodex-darwin-x64'];
+          fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
+          NODE
           npm pack "$root_stage" --pack-destination dist/npm
           mv "dist/npm/yuebanlaosiji-aicodex-${VERSION}.tgz" "dist/npm/codex-npm-${VERSION}.tgz"
 
@@ -333,7 +338,6 @@ jobs:
           platform_tarballs=(
             "dist/npm/codex-linux-x64-${VERSION}.tgz"
             "dist/npm/codex-linux-arm64-${VERSION}.tgz"
-            "dist/npm/codex-darwin-x64-${VERSION}.tgz"
             "dist/npm/codex-darwin-arm64-${VERSION}.tgz"
             "dist/npm/codex-win32-x64-${VERSION}.tgz"
             "dist/npm/codex-win32-arm64-${VERSION}.tgz"
