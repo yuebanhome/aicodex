@@ -1,0 +1,329 @@
+name: npm-release
+
+on:
+  push:
+    branches:
+      - release
+  workflow_dispatch:
+
+concurrency:
+  group: npm-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+
+jobs:
+  package:
+    name: Build native package - ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: codex-rs
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-24.04
+            npm_package: codex-linux-x64
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+            npm_package: codex-linux-arm64
+          - target: x86_64-apple-darwin
+            runner: macos-13
+            npm_package: codex-darwin-x64
+          - target: aarch64-apple-darwin
+            runner: macos-15
+            npm_package: codex-darwin-arm64
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Use hermetic Cargo home (Linux)
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo_home="${GITHUB_WORKSPACE}/.cargo-home"
+          mkdir -p "${cargo_home}/bin"
+          echo "CARGO_HOME=${cargo_home}" >> "$GITHUB_ENV"
+          echo "${cargo_home}/bin" >> "$GITHUB_PATH"
+          : > "${cargo_home}/config.toml"
+
+      - name: Install Zig (Linux)
+        if: ${{ runner.os == 'Linux' }}
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.14.0
+          use-cache: false
+
+      - name: Install Linux build dependencies
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: bash "${GITHUB_WORKSPACE}/.github/scripts/install-musl-build-tools.sh"
+
+      - name: Disable aws-lc jitter entropy (Linux)
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "AWS_LC_SYS_NO_JITTER_ENTROPY=1" >> "$GITHUB_ENV"
+          target_no_jitter="AWS_LC_SYS_NO_JITTER_ENTROPY_${{ matrix.target }}"
+          target_no_jitter="${target_no_jitter//-/_}"
+          echo "${target_no_jitter}=1" >> "$GITHUB_ENV"
+
+      - name: Configure rusty_v8 artifact overrides and verify checksums
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Build bwrap and export digest (Linux)
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="${{ matrix.target }}"
+          cargo build --target "$target" --release --timings --bin bwrap
+          bwrap_path="target/${target}/release/bwrap"
+          strip --strip-debug --strip-unneeded "$bwrap_path"
+          digest="$(sha256sum "$bwrap_path" | awk '{print $1}')"
+          echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
+
+      - name: Build AICodex
+        shell: bash
+        run: cargo build --target "${{ matrix.target }}" --release --timings --bin aicodex
+
+      - name: Strip binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="${{ matrix.target }}"
+          if [[ "${RUNNER_OS}" == "macOS" ]]; then
+            strip "target/${target}/release/aicodex" || true
+          else
+            strip --strip-debug --strip-unneeded "target/${target}/release/aicodex"
+          fi
+
+      - name: Build native package archive
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          bash "${GITHUB_WORKSPACE}/.github/scripts/build-codex-package-archive.sh" \
+            --target "$TARGET" \
+            --bundle primary \
+            --entrypoint-dir "target/${TARGET}/release" \
+            --archive-dir "dist/${TARGET}"
+
+      - name: Upload native package archive
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: native-${{ matrix.target }}
+          path: codex-rs/dist/${{ matrix.target }}/codex-package-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+
+  stage:
+    name: Stage npm tarballs
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      npm_tag: ${{ steps.version.outputs.npm_tag }}
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < AICODEX_VERSION)"
+          [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta)(\.[0-9]+)?)?$ ]] \
+            || { echo "Invalid AICODEX_VERSION: ${version}" >&2; exit 1; }
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          if [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "npm_tag=latest" >> "$GITHUB_OUTPUT"
+          elif [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+$ ]]; then
+            echo "npm_tag=alpha" >> "$GITHUB_OUTPUT"
+          elif [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
+            echo "npm_tag=beta" >> "$GITHUB_OUTPUT"
+          else
+            echo "npm_tag=next" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 22
+
+      - name: Download native archives
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: native-*
+          path: dist/native-artifacts
+
+      - name: Stage native vendor tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          vendor_root="${RUNNER_TEMP}/aicodex-npm-vendor/vendor"
+          mkdir -p "$vendor_root"
+          find dist/native-artifacts -name 'codex-package-*.tar.gz' -print |
+            while IFS= read -r archive; do
+              name="$(basename "$archive")"
+              target="${name#codex-package-}"
+              target="${target%.tar.gz}"
+              mkdir -p "$vendor_root/$target"
+              tar -xzf "$archive" -C "$vendor_root/$target"
+            done
+          find "$vendor_root" -maxdepth 2 -type f -name 'codex-package.json' -print
+          echo "AICODEX_VENDOR_ROOT=${RUNNER_TEMP}/aicodex-npm-vendor" >> "$GITHUB_ENV"
+
+      - name: Stage platform npm tarballs
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          packages=(
+            codex-linux-x64
+            codex-linux-arm64
+            codex-darwin-x64
+            codex-darwin-arm64
+          )
+          mkdir -p dist/npm
+          for package in "${packages[@]}"; do
+            codex-cli/scripts/build_npm_package.py \
+              --package "$package" \
+              --release-version "$VERSION" \
+              --vendor-src "${AICODEX_VENDOR_ROOT}/vendor" \
+              --staging-dir "${RUNNER_TEMP}/npm-stage-${package}" \
+              --pack-output "dist/npm/${package}-${VERSION}.tgz"
+          done
+
+      - name: Stage root npm tarball
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          ROOT_STAGE: ${{ runner.temp }}/npm-stage-codex
+        run: |
+          set -euo pipefail
+          root_stage="${RUNNER_TEMP}/npm-stage-codex"
+          codex-cli/scripts/build_npm_package.py \
+            --package codex \
+            --release-version "$VERSION" \
+            --staging-dir "$root_stage"
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const root = process.env.ROOT_STAGE;
+          const packageJsonPath = path.join(root, 'package.json');
+          const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+          for (const name of Object.keys(packageJson.optionalDependencies || {})) {
+            if (name.includes('win32')) {
+              delete packageJson.optionalDependencies[name];
+            }
+          }
+          fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
+          NODE
+          npm pack "$root_stage" --pack-destination dist/npm
+          mv "dist/npm/leagsoft-aicodex-${VERSION}.tgz" "dist/npm/codex-npm-${VERSION}.tgz"
+
+      - name: Upload npm tarballs
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: npm-tarballs
+          path: dist/npm/*.tgz
+          if-no-files-found: error
+
+  publish:
+    name: Publish npm tarballs
+    needs: stage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment:
+      name: npm-publish
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+          scope: "@leagsoft"
+
+      - name: Download npm tarballs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: npm-tarballs
+          path: dist/npm
+
+      - name: Check npm token
+        id: npm_token
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${NODE_AUTH_TOKEN}" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "NPM_TOKEN is not configured in the npm-publish environment; skipping publish."
+          fi
+
+      - name: Publish to npm
+        if: ${{ steps.npm_token.outputs.available == 'true' }}
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TAG: ${{ needs.stage.outputs.npm_tag }}
+          VERSION: ${{ needs.stage.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${NODE_AUTH_TOKEN}" ]]; then
+            echo "Missing NPM_TOKEN secret in the npm-publish environment" >&2
+            exit 1
+          fi
+
+          platform_tarballs=(
+            "dist/npm/codex-linux-x64-${VERSION}.tgz"
+            "dist/npm/codex-linux-arm64-${VERSION}.tgz"
+            "dist/npm/codex-darwin-x64-${VERSION}.tgz"
+            "dist/npm/codex-darwin-arm64-${VERSION}.tgz"
+          )
+          root_tarball="dist/npm/codex-npm-${VERSION}.tgz"
+
+          for tarball in "${platform_tarballs[@]}" "$root_tarball"; do
+            [[ -f "$tarball" ]] || { echo "Missing npm tarball: $tarball" >&2; exit 1; }
+          done
+
+          python3 scripts/publish_npm_tarballs.py \
+            --tag "$NPM_TAG" \
+            "${platform_tarballs[@]}" \
+            "$root_tarball"

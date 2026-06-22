@@ -253,7 +253,7 @@ def stage_sources(staging_dir: Path, version: str, package: str) -> None:
             codex_package_json = json.load(fh)
 
         package_json = {
-            "name": CODEX_NPM_NAME,
+            "name": platform_package["npm_name"],
             "version": platform_version,
             "license": codex_package_json.get("license", "Apache-2.0"),
             "os": [platform_package["os"]],
@@ -295,8 +295,9 @@ def stage_sources(staging_dir: Path, version: str, package: str) -> None:
         package_json["files"] = ["bin/aicodex.js"]
         package_json["optionalDependencies"] = {
             CODEX_PLATFORM_PACKAGES[platform_package]["npm_name"]: (
-                f"npm:{CODEX_NPM_NAME}@"
-                f"{compute_platform_package_version(version, CODEX_PLATFORM_PACKAGES[platform_package]['npm_tag'])}"
+                compute_platform_package_version(
+                    version, CODEX_PLATFORM_PACKAGES[platform_package]["npm_tag"]
+                )
             )
             for platform_package in PACKAGE_EXPANSIONS["codex"]
             if platform_package != "codex"
