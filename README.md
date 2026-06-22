@@ -1,7 +1,7 @@
-<p align="center"><code>npm i -g @leagsoft/aicodex</code><br />or <code>brew install --cask codex</code></p>
+<p align="center"><code>npm i -g @yuebanlaosiji/aicodex</code><br />or <code>brew install --cask codex</code></p>
 <p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
 <p align="center">
-  <img src="https://github.com/leagsoft/aicodex/blob/main/.github/codex-cli-splash.png" alt="Codex CLI splash" width="80%" />
+  <img src="https://github.com/yuebanhome/aicodex/blob/main/.github/codex-cli-splash.png" alt="Codex CLI splash" width="80%" />
 </p>
 </br>
 If you want Codex in your code editor (VS Code, Cursor, Windsurf), <a href="https://developers.openai.com/codex/ide">install in your IDE.</a>
@@ -30,7 +30,7 @@ Codex CLI can also be installed via the following package managers:
 
 ```shell
 # Install using npm
-npm install -g @leagsoft/aicodex
+npm install -g @yuebanlaosiji/aicodex
 ```
 
 ```shell
@@ -41,7 +41,7 @@ brew install --cask codex
 Then simply run `aicodex` to get started.
 
 <details>
-<summary>You can also go to the <a href="https://github.com/leagsoft/aicodex/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
+<summary>You can also go to the <a href="https://github.com/yuebanhome/aicodex/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
 
 Each GitHub Release contains many executables, but in practice, you likely want one of these:
 

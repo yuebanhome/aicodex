@@ -2,12 +2,12 @@
 
 Embed the Codex agent in your workflows and apps.
 
-The TypeScript SDK wraps the `aicodex` CLI from `@leagsoft/aicodex`. It spawns the CLI and exchanges JSONL events over stdin/stdout.
+The TypeScript SDK wraps the `aicodex` CLI from `@yuebanlaosiji/aicodex`. It spawns the CLI and exchanges JSONL events over stdin/stdout.
 
 ## Installation
 
 ```bash
-npm install @leagsoft/aicodex-sdk
+npm install @yuebanlaosiji/aicodex-sdk
 ```
 
 Requires Node.js 18+.
@@ -15,7 +15,7 @@ Requires Node.js 18+.
 ## Quickstart
 
 ```typescript
-import { Codex } from "@leagsoft/aicodex-sdk";
+import { Codex } from "@yuebanlaosiji/aicodex-sdk";
 
 const codex = new Codex();
 const thread = codex.startThread();

@@ -42,15 +42,15 @@ export type CodexExecArgs = {
 
 const INTERNAL_ORIGINATOR_ENV = "CODEX_INTERNAL_ORIGINATOR_OVERRIDE";
 const TYPESCRIPT_SDK_ORIGINATOR = "codex_sdk_ts";
-const CODEX_NPM_NAME = "@leagsoft/aicodex";
+const CODEX_NPM_NAME = "@yuebanlaosiji/aicodex";
 
 const PLATFORM_PACKAGE_BY_TARGET: Record<string, string> = {
-  "x86_64-unknown-linux-musl": "@leagsoft/aicodex-linux-x64",
-  "aarch64-unknown-linux-musl": "@leagsoft/aicodex-linux-arm64",
-  "x86_64-apple-darwin": "@leagsoft/aicodex-darwin-x64",
-  "aarch64-apple-darwin": "@leagsoft/aicodex-darwin-arm64",
-  "x86_64-pc-windows-msvc": "@leagsoft/aicodex-win32-x64",
-  "aarch64-pc-windows-msvc": "@leagsoft/aicodex-win32-arm64",
+  "x86_64-unknown-linux-musl": "@yuebanlaosiji/aicodex-linux-x64",
+  "aarch64-unknown-linux-musl": "@yuebanlaosiji/aicodex-linux-arm64",
+  "x86_64-apple-darwin": "@yuebanlaosiji/aicodex-darwin-x64",
+  "aarch64-apple-darwin": "@yuebanlaosiji/aicodex-darwin-arm64",
+  "x86_64-pc-windows-msvc": "@yuebanlaosiji/aicodex-win32-x64",
+  "aarch64-pc-windows-msvc": "@yuebanlaosiji/aicodex-win32-arm64",
 };
 
 const moduleRequire = createRequire(import.meta.url);

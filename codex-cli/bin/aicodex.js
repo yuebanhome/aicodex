@@ -13,12 +13,12 @@ const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
 
 const PLATFORM_PACKAGE_BY_TARGET = {
-  "x86_64-unknown-linux-musl": "@leagsoft/aicodex-linux-x64",
-  "aarch64-unknown-linux-musl": "@leagsoft/aicodex-linux-arm64",
-  "x86_64-apple-darwin": "@leagsoft/aicodex-darwin-x64",
-  "aarch64-apple-darwin": "@leagsoft/aicodex-darwin-arm64",
-  "x86_64-pc-windows-msvc": "@leagsoft/aicodex-win32-x64",
-  "aarch64-pc-windows-msvc": "@leagsoft/aicodex-win32-arm64",
+  "x86_64-unknown-linux-musl": "@yuebanlaosiji/aicodex-linux-x64",
+  "aarch64-unknown-linux-musl": "@yuebanlaosiji/aicodex-linux-arm64",
+  "x86_64-apple-darwin": "@yuebanlaosiji/aicodex-darwin-x64",
+  "aarch64-apple-darwin": "@yuebanlaosiji/aicodex-darwin-arm64",
+  "x86_64-pc-windows-msvc": "@yuebanlaosiji/aicodex-win32-x64",
+  "aarch64-pc-windows-msvc": "@yuebanlaosiji/aicodex-win32-arm64",
 };
 
 const { platform, arch } = process;
@@ -118,8 +118,8 @@ if (!nativePackage) {
   const packageManager = detectPackageManager();
   const updateCommand =
     packageManager === "bun"
-      ? "bun install -g @leagsoft/aicodex@latest"
-      : "npm install -g @leagsoft/aicodex@latest";
+      ? "bun install -g @yuebanlaosiji/aicodex@latest"
+      : "npm install -g @yuebanlaosiji/aicodex@latest";
   throw new Error(
     `Missing optional dependency ${platformPackage}. Reinstall AICodex: ${updateCommand}`,
   );
